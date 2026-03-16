@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      target: production
+    container_name: rag-backend-prod
+    environment:
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - ONNXRUNTIME_LOG_LEVEL=3
+      - PYTHONDONTWRITEBYTECODE=1
+    env_file: .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - backend_data:/app/data
+      - backend_chroma:/app/chroma_db
+    restart: always
+
+  frontend:
+    build:
+      context: ./frontend
+      target: production
+    container_name: rag-frontend-prod
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+    restart: always
+
+volumes:
+  backend_data:
+  backend_chroma:

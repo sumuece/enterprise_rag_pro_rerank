@@ -1,0 +1,21 @@
+# --- Core Framework ---
+fastapi
+uvicorn
+python-dotenv
+
+# --- LangChain Ecosystem (2026 Standards) ---
+langchain
+langchain-openai
+langchain-google-genai
+langchain-community
+langchain-classic
+langchain-text-splitters
+
+# --- Vector Database & Processing ---
+chromadb
+pypdf
+
+# --- Reranking & Performance ---
+flashrank
+httpx
+python-multipart
