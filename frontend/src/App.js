@@ -37,8 +37,8 @@ function App() {
     refreshKnowledgeBase();
   }, []);
 
-  const handleSend = async () => {
-    const prompt = input.trim();
+  const sendPrompt = async (rawPrompt, options = {}) => {
+    const prompt = rawPrompt.trim();
     if (!prompt || isLoading) {
       return;
     }
@@ -56,9 +56,14 @@ function App() {
       return;
     }
 
-    const userMessage = { role: 'user', text: prompt };
-    setMessages((previous) => [...previous, userMessage]);
-    setInput('');
+    if (!options.skipUserMessage) {
+      const userMessage = { role: 'user', text: prompt };
+      setMessages((previous) => [...previous, userMessage]);
+    }
+
+    if (!options.preserveInput) {
+      setInput('');
+    }
     setIsLoading(true);
 
     try {
@@ -92,11 +97,25 @@ function App() {
           text: error.message || 'Error connecting to server.',
           error: true,
           sources: [],
+          retryPrompt: prompt,
         },
       ]);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleSend = async () => {
+    await sendPrompt(input);
+  };
+
+  const handleRetry = async (retryPrompt) => {
+    if (!retryPrompt || isLoading) {
+      return;
+    }
+
+    setMessages((previous) => previous.filter((message) => message.retryPrompt !== retryPrompt));
+    await sendPrompt(retryPrompt, { skipUserMessage: true, preserveInput: true });
   };
 
   const handleNewChat = () => {
@@ -177,6 +196,7 @@ function App() {
         isLoading={isLoading}
         kbStatus={kbStatus}
         messages={messages}
+        onRetry={handleRetry}
         onSend={handleSend}
         selectedModel={selectedModel}
         setInput={setInput}

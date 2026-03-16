@@ -24,7 +24,8 @@ logger = logging.getLogger("RAG-Engine")
 load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent
-DB_PATH = BASE_DIR / "chroma_db"
+DB_ROOT = BASE_DIR / "chroma_db"
+DB_PATH = DB_ROOT / "store"
 PROMPTS_PATH = BASE_DIR / "prompts.json"
 COLLECTION_NAME = "enterprise_rag_documents"
 DEFAULT_MODEL = "openrouter/google/gemini-2.0-flash-001"

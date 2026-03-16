@@ -46,8 +46,10 @@ textarea {
 .app-shell {
   position: relative;
   display: flex;
-  min-height: 100vh;
+  height: 100vh;
+  min-height: 0;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .app-backdrop {
@@ -132,29 +134,35 @@ textarea {
 }
 
 .chat-surface {
-  flex: 1;
+  flex: 0 0 auto;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 2rem;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.02)),
-    rgba(7, 12, 20, 0.72);
+  background: rgba(7, 12, 20, 0.82);
   padding: 1.25rem;
-  overflow-y: auto;
   min-height: 420px;
-  contain: layout paint;
   -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
+}
+
+.chat-surface-empty {
+  flex: 0 0 auto;
+  min-height: 180px;
+}
+
+.chat-main-scroll {
+  overflow-y: auto;
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  overscroll-behavior-x: auto;
 }
 
 .message-card {
-  width: min(880px, 100%);
+  width: min(1040px, 100%);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 1.75rem;
   padding: 1.25rem 1.25rem 1.1rem;
-  box-shadow: 0 24px 70px rgba(2, 6, 23, 0.28);
-  contain: content;
-  content-visibility: auto;
-  contain-intrinsic-size: 280px;
+  box-shadow: 0 10px 28px rgba(2, 6, 23, 0.18);
+  touch-action: pan-y;
 }
 
 .message-assistant {
@@ -260,7 +268,12 @@ textarea {
 }
 
 .chat-message-list {
-  transform: translateZ(0);
+  touch-action: pan-y;
+}
+
+.prose,
+.prose * {
+  touch-action: pan-y;
 }
 
 @media (min-width: 1024px) {
@@ -282,6 +295,10 @@ textarea {
   }
 
   .message-card {
-    box-shadow: 0 12px 30px rgba(2, 6, 23, 0.2);
+    box-shadow: none;
+  }
+
+  .animate-rise {
+    animation: none;
   }
 }

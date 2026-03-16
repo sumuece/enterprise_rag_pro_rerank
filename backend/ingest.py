@@ -17,7 +17,8 @@ logger = logging.getLogger("Ingestor")
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_PATH = BASE_DIR / "data"
-DB_PATH = BASE_DIR / "chroma_db"
+DB_ROOT = BASE_DIR / "chroma_db"
+DB_PATH = DB_ROOT / "store"
 COLLECTION_NAME = "enterprise_rag_documents"
 CHUNK_SIZE = 1100
 CHUNK_OVERLAP = 180
@@ -84,8 +85,9 @@ def _clear_directory(directory: Path) -> None:
 
 def reset_knowledge_base():
     DATA_PATH.mkdir(parents=True, exist_ok=True)
-    DB_PATH.mkdir(parents=True, exist_ok=True)
-    _clear_directory(DB_PATH)
+    DB_ROOT.mkdir(parents=True, exist_ok=True)
+    if DB_PATH.exists():
+        _clear_directory(DB_PATH)
     logger.info("Knowledge base reset. No indexed documents remain.")
     return {
         "documents": [],
