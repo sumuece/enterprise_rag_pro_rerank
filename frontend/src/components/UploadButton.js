@@ -17,6 +17,7 @@ export default function UploadButton({
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const handleFile = async (event) => {
+    // Uploading a file always reindexes the full KB with the selected embedding model.
     const file = event.target.files[0];
     if (!file) {
       return;

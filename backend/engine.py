@@ -1,3 +1,5 @@
+"""RAG runtime utilities for retrieval, reranking, model selection, and answer generation."""
+
 import json
 import logging
 import os
@@ -40,6 +42,14 @@ GOOGLE_FALLBACK_MODELS = ["google/gemini-2.0-flash-001"]
 
 
 def load_system_prompt(key="rag_system_prompt"):
+    """Load a named prompt template from disk with a safe in-code fallback.
+
+    Args:
+        key: Prompt key to read from ``prompts.json``.
+
+    Returns:
+        The resolved prompt template string.
+    """
     try:
         with PROMPTS_PATH.open("r", encoding="utf-8") as handle:
             prompts = json.load(handle)
@@ -54,6 +64,11 @@ def load_system_prompt(key="rag_system_prompt"):
 
 
 def get_vectorstore():
+    """Open the active Chroma store with the embedding model used to build it.
+
+    Returns:
+        A ``Chroma`` vector store bound to the active index path and embedding model.
+    """
     db_path = get_current_store_path()
     if not db_path.exists():
         raise RuntimeError("Knowledge base is empty. Upload and index at least one PDF first.")
@@ -68,6 +83,11 @@ def get_vectorstore():
 
 
 def get_collection_stats():
+    """Return the current index health and chunk count for UI status endpoints.
+
+    Returns:
+        A dictionary containing chunk count, readiness state, and active embedding model ID.
+    """
     if not get_current_store_path().exists():
         logger.info("Collection stats requested while knowledge base is empty.")
         return {
@@ -95,10 +115,26 @@ def get_collection_stats():
 
 
 def _is_openrouter_model(model_id: str):
+    """Determine whether a model ID should be routed through OpenRouter.
+
+    Args:
+        model_id: Chat model identifier supplied by the UI or fallback logic.
+
+    Returns:
+        ``True`` when the model should be initialized through the OpenRouter endpoint.
+    """
     return model_id == "openrouter/free" or model_id.startswith("openrouter/") or model_id.endswith(":free")
 
 
 def _resolve_model_config(model_id: str):
+    """Map a model ID to the provider configuration expected by LangChain.
+
+    Args:
+        model_id: Chat model identifier to resolve.
+
+    Returns:
+        A provider configuration dictionary for ``init_chat_model``.
+    """
     if _is_openrouter_model(model_id):
         if model_id == "openrouter/free":
             resolved_model = model_id
@@ -123,6 +159,14 @@ def _resolve_model_config(model_id: str):
 
 
 def get_llm(model_id: str):
+    """Create the chat model client with provider-aware fallback behavior.
+
+    Args:
+        model_id: Preferred chat model identifier requested by the user.
+
+    Returns:
+        A tuple of ``(llm, active_model_name)`` for the first successfully initialized model.
+    """
     requested_id = model_id or DEFAULT_MODEL
     fallback_models = OPENROUTER_FALLBACK_MODELS if _is_openrouter_model(requested_id) else GOOGLE_FALLBACK_MODELS
 
@@ -158,6 +202,14 @@ def get_llm(model_id: str):
 
 
 def build_sources(documents):
+    """Convert retrieved LangChain documents into a compact UI-friendly source payload.
+
+    Args:
+        documents: Retrieved LangChain documents returned by the RAG chain.
+
+    Returns:
+        A list of compact source dictionaries for UI rendering.
+    """
     logger.info("Building source payload for %s retrieved chunks.", len(documents))
     sources = []
     for rank, doc in enumerate(documents, start=1):
@@ -178,6 +230,14 @@ def build_sources(documents):
 
 
 def get_rag_chain(model_id: str):
+    """Assemble the retrieval, reranking, and answer-generation chain for a request.
+
+    Args:
+        model_id: Preferred chat model identifier for the request.
+
+    Returns:
+        A tuple of ``(retrieval_chain, active_model_name)``.
+    """
     logger.info("Building RAG chain for request: %s", model_id)
     vectorstore = get_vectorstore()
     base_retriever = vectorstore.as_retriever(search_kwargs={"k": 12})
@@ -200,6 +260,15 @@ def get_rag_chain(model_id: str):
 
 
 def answer_query(prompt: str, model_id: str):
+    """Run the end-to-end RAG flow and return answer, sources, and latency metrics.
+
+    Args:
+        prompt: User question to answer against the indexed documents.
+        model_id: Preferred chat model identifier for the request.
+
+    Returns:
+        A dictionary containing the answer text, active model, sources, and metrics.
+    """
     logger.info("Answer generation started. prompt_length=%s model=%s", len(prompt), model_id)
     started_at = perf_counter()
     chain, active_model = get_rag_chain(model_id)

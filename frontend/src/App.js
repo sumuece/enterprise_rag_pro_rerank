@@ -23,6 +23,7 @@ function App() {
   const hasKnowledgeBase = kbStatus.status === 'ready' && (kbStatus.document_count || 0) > 0;
 
   const refreshKnowledgeBase = async () => {
+    // Keep the shell state in sync with backend indexing status and active embedding metadata.
     try {
       const response = await fetch(`${API_BASE}/kb/status`);
       const data = await response.json();
@@ -40,6 +41,7 @@ function App() {
   }, []);
 
   const sendPrompt = async (rawPrompt, options = {}) => {
+    // Send a question through the RAG API using the currently selected chat model.
     const prompt = rawPrompt.trim();
     if (!prompt || isLoading) {
       return;
@@ -126,6 +128,7 @@ function App() {
   };
 
   const handleUploadSuccess = (payload) => {
+    // Surface the indexing result in chat and seed a useful follow-up prompt.
     const primaryDocument = payload.documents?.[0]?.name || payload.message.replace('Successfully indexed ', '');
     setMessages((previous) => [
       ...previous,
@@ -144,6 +147,7 @@ function App() {
   };
 
   const handleDeleteDocument = async (documentName) => {
+    // Keep the UI and chat history aligned when documents are removed from the KB.
     try {
       const response = await fetch(`${API_BASE}/documents/${encodeURIComponent(documentName)}`, {
         method: 'DELETE',

@@ -19,6 +19,7 @@ import { EMBEDDING_MODELS, FREE_MODELS } from '../models';
 const MESSAGE_WINDOW_SIZE = 24;
 
 const MessageCard = memo(function MessageCard({ animate, message, onRetry }) {
+  // Each assistant message can independently expand or collapse its source snippets.
   const isUser = message.role === 'user';
   const [expandedSources, setExpandedSources] = useState({});
 
@@ -137,6 +138,7 @@ export default function ChatWindow({
   const selectedEmbedding = EMBEDDING_MODELS.find((model) => model.id === selectedEmbeddingModel);
 
   useEffect(() => {
+    // Keep the newest exchange visible as messages stream into the conversation.
     if (messages.length > previousMessageCountRef.current) {
       setVisibleCount((current) => Math.max(MESSAGE_WINDOW_SIZE, Math.min(messages.length, current + 1)));
       scrollRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
@@ -212,7 +214,7 @@ export default function ChatWindow({
               <div className="flex flex-col gap-4">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Inference routing</p>
-                  <p className="mt-1 text-sm text-slate-300">Select the free OpenRouter model you want the retrieval chain to use.</p>
+                  <p className="mt-1 text-sm text-slate-300">Choose the chat model used to answer questions over the indexed documents.</p>
                 </div>
 
                 <div className="relative">
@@ -262,7 +264,7 @@ export default function ChatWindow({
 
             <div className="rounded-[24px] border border-white/10 bg-black/10 p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Ingestion</p>
-              <p className="mt-1 text-sm text-slate-300">Choose the embedding model for the next reindex and upload documents here.</p>
+              <p className="mt-1 text-sm text-slate-300">Choose the embedding model for the next reindex, then upload documents here.</p>
               <div className="mt-4">
                 <UploadButton
                   activeEmbeddingModelId={kbStatus.embedding_model_id}
@@ -322,7 +324,7 @@ export default function ChatWindow({
                   <div className="message-card message-assistant">
                     <div className="flex items-center gap-3 text-sm text-slate-300">
                       <Loader2 className="animate-spin text-cyan-200" size={18} />
-                      Retrieving relevant sections and preparing a response.
+                      Retrieving supporting passages and drafting the response.
                     </div>
                   </div>
                 </div>
@@ -359,7 +361,7 @@ export default function ChatWindow({
           </div>
           <p className="px-2 pt-3 text-xs text-slate-500">
             {hasKnowledgeBase
-              ? 'Answers are generated from retrieved document chunks. If evidence is missing, the assistant should say so.'
+              ? 'Answers are grounded in retrieved document passages. If the evidence is missing, the assistant should say so.'
               : 'Chat is disabled until at least one PDF is indexed into the knowledge base.'}
           </p>
         </div>

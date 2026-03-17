@@ -1,3 +1,5 @@
+"""PDF ingestion pipeline for chunking documents and building the active vector store."""
+
 import hashlib
 import logging
 import shutil
@@ -30,6 +32,15 @@ CHUNK_SIZE = 1100
 CHUNK_OVERLAP = 180
 
 def _build_suggested_prompt(document_name: str, sample_text: str) -> str:
+    """Generate a domain-aware starter prompt based on the uploaded document content.
+
+    Args:
+        document_name: Source PDF filename used to personalize the prompt.
+        sample_text: Representative text extracted from the document.
+
+    Returns:
+        A suggested follow-up prompt tailored to the document domain.
+    """
     safe_name = document_name or "this document"
     corpus = f"{safe_name} {sample_text}".lower()
 
@@ -64,6 +75,14 @@ def _build_suggested_prompt(document_name: str, sample_text: str) -> str:
 
 
 def _compute_checksum(file_path: Path) -> str:
+    """Compute a stable checksum so retrieved chunks can be traced to source files.
+
+    Args:
+        file_path: Path to the source PDF on disk.
+
+    Returns:
+        The SHA-256 checksum of the file contents.
+    """
     logger.info("Computing checksum for %s", file_path.name)
     digest = hashlib.sha256()
     with file_path.open("rb") as handle:
@@ -73,6 +92,11 @@ def _compute_checksum(file_path: Path) -> str:
 
 
 def _clear_directory(directory: Path) -> None:
+    """Remove all files and folders in a directory without deleting the directory itself.
+
+    Args:
+        directory: Directory whose contents should be removed.
+    """
     if not directory.exists():
         return
 
@@ -85,6 +109,11 @@ def _clear_directory(directory: Path) -> None:
 
 
 def reset_knowledge_base():
+    """Clear the active vector store and return an empty knowledge-base payload.
+
+    Returns:
+        A status payload representing an empty knowledge base.
+    """
     DATA_PATH.mkdir(parents=True, exist_ok=True)
     DB_ROOT.mkdir(parents=True, exist_ok=True)
     db_path = get_current_store_path()
@@ -101,6 +130,12 @@ def reset_knowledge_base():
 
 
 def _prepare_chunks():
+    """Load PDFs, split them into chunks, and attach retrieval-friendly metadata.
+
+    Returns:
+        A tuple of ``(chunks, documents)`` where ``chunks`` is the list of chunked
+        documents for indexing and ``documents`` is a summary payload for the UI.
+    """
     DATA_PATH.mkdir(parents=True, exist_ok=True)
     logger.info("Scanning directory: %s", DATA_PATH)
 
@@ -175,6 +210,14 @@ def _prepare_chunks():
 
 
 def run_ingestion(embedding_model_id: str | None = None):
+    """Build a fresh Chroma index using the requested embedding model.
+
+    Args:
+        embedding_model_id: Optional embedding model identifier selected by the user.
+
+    Returns:
+        A status payload describing the rebuilt knowledge base and active embedding model.
+    """
     logger.info("--- Starting enterprise ingestion ---")
     chunks, documents = _prepare_chunks()
     if not chunks:

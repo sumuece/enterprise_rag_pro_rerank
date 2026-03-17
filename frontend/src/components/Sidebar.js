@@ -2,6 +2,7 @@ import React from 'react';
 import { Database, FileText, Plus, RefreshCw, ShieldCheck, X } from 'lucide-react';
 
 function formatFileSize(sizeBytes) {
+  // Keep sidebar document sizes readable without pulling in an external formatter.
   if (!sizeBytes) {
     return '0 KB';
   }
@@ -96,7 +97,7 @@ export default function Sidebar({
 
           {documents.length === 0 ? (
             <div className="rounded-3xl border border-dashed border-white/10 bg-white/[0.03] p-5 text-sm leading-6 text-slate-400">
-              Upload PDF reports, policies, SOPs, or knowledge manuals to initialize the retrieval layer.
+              Upload PDF reports, policies, SOPs, or manuals to start building the knowledge base.
             </div>
           ) : (
             <div className="space-y-3">
