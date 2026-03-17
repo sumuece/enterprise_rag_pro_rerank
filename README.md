@@ -11,9 +11,11 @@ PDF document search app with:
 ## Backend
 
 1. Add `GOOGLE_API_KEY` and/or `OPENROUTER_API_KEY` to `.env`
-2. Upload PDFs from the UI, or place them in `backend/data/` before running manual ingestion
-3. Run `python backend/ingest.py` to build the vector store
-4. Run `uvicorn main:app --reload` inside `backend/`
+2. The chat UI now defaults to `openrouter/free` and includes several current zero-cost OpenRouter models suited to RAG-style document QA
+3. The sidebar upload flow includes an embedding-model selector, and the backend reuses the same embedding model for retrieval as the one used during indexing
+4. Upload PDFs from the UI, or place them in `backend/data/` before running manual ingestion
+5. Run `python backend/ingest.py` to build the vector store
+6. Run `uvicorn main:app --reload` inside `backend/`
 
 ## Frontend
 

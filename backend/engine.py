@@ -8,11 +8,12 @@ from dotenv import load_dotenv
 from langchain.chat_models import init_chat_model
 from langchain_community.vectorstores import Chroma
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_classic.chains import create_retrieval_chain
 from langchain_classic.chains.combine_documents import create_stuff_documents_chain
 from langchain_classic.retrievers import ContextualCompressionRetriever
 from langchain_classic.retrievers.document_compressors import FlashrankRerank
+
+from model_registry import build_embeddings, get_current_embedding_model_id, get_current_store_path
 
 
 logging.basicConfig(
@@ -24,15 +25,18 @@ logger = logging.getLogger("RAG-Engine")
 load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent
-DB_ROOT = BASE_DIR / "chroma_db"
-DB_PATH = DB_ROOT / "store"
 PROMPTS_PATH = BASE_DIR / "prompts.json"
 COLLECTION_NAME = "enterprise_rag_documents"
-DEFAULT_MODEL = "openrouter/google/gemini-2.0-flash-001"
-FALLBACK_MODELS = [
-    "google/gemini-2.0-flash-001",
-    "meta-llama/llama-3.3-70b-instruct:free",
+DEFAULT_MODEL = "openrouter/free"
+OPENROUTER_FALLBACK_MODELS = [
+    "openrouter/stepfun/step-3.5-flash:free",
+    "openrouter/qwen/qwen3-next-80b-a3b-instruct:free",
+    "openrouter/arcee-ai/trinity-large-preview:free",
+    "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+    "openrouter/meta-llama/llama-3.3-70b-instruct:free",
+    "openrouter/mistralai/mistral-small-3.1-24b-instruct:free",
 ]
+GOOGLE_FALLBACK_MODELS = ["google/gemini-2.0-flash-001"]
 
 
 def load_system_prompt(key="rag_system_prompt"):
@@ -49,66 +53,95 @@ def load_system_prompt(key="rag_system_prompt"):
         )
 
 
-def _get_embeddings():
-    logger.info("Initializing embeddings model.")
-    return GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
-
-
 def get_vectorstore():
-    if not DB_PATH.exists():
+    db_path = get_current_store_path()
+    if not db_path.exists():
         raise RuntimeError("Knowledge base is empty. Upload and index at least one PDF first.")
 
-    logger.info("Opening vector store at %s", DB_PATH)
+    embeddings, embedding_model_id = build_embeddings()
+    logger.info("Opening vector store at %s with embedding model %s", db_path, embedding_model_id)
     return Chroma(
-        persist_directory=str(DB_PATH),
-        embedding_function=_get_embeddings(),
+        persist_directory=str(db_path),
+        embedding_function=embeddings,
         collection_name=COLLECTION_NAME,
     )
 
 
 def get_collection_stats():
-    if not DB_PATH.exists():
+    if not get_current_store_path().exists():
         logger.info("Collection stats requested while knowledge base is empty.")
-        return {"chunk_count": 0, "status": "empty"}
+        return {
+            "chunk_count": 0,
+            "status": "empty",
+            "embedding_model_id": get_current_embedding_model_id(),
+        }
 
     try:
         vectorstore = get_vectorstore()
         count = vectorstore._collection.count()
         logger.info("Collection stats loaded. chunks=%s", count)
-        return {"chunk_count": count, "status": "ready" if count else "empty"}
+        return {
+            "chunk_count": count,
+            "status": "ready" if count else "empty",
+            "embedding_model_id": get_current_embedding_model_id(),
+        }
     except Exception as exc:
         logger.error("Failed to read collection stats: %s", exc)
-        return {"chunk_count": 0, "status": "error"}
+        return {
+            "chunk_count": 0,
+            "status": "error",
+            "embedding_model_id": get_current_embedding_model_id(),
+        }
+
+
+def _is_openrouter_model(model_id: str):
+    return model_id == "openrouter/free" or model_id.startswith("openrouter/") or model_id.endswith(":free")
+
+
+def _resolve_model_config(model_id: str):
+    if _is_openrouter_model(model_id):
+        if model_id == "openrouter/free":
+            resolved_model = model_id
+        elif model_id.startswith("openrouter/"):
+            resolved_model = model_id.replace("openrouter/", "", 1)
+        else:
+            resolved_model = model_id
+
+        return {
+            "provider": "openai",
+            "model_name": resolved_model,
+            "base_url": "https://openrouter.ai/api/v1",
+            "api_key": os.getenv("OPENROUTER_API_KEY"),
+        }
+
+    return {
+        "provider": "google_genai",
+        "model_name": model_id,
+        "base_url": None,
+        "api_key": os.getenv("GOOGLE_API_KEY"),
+    }
 
 
 def get_llm(model_id: str):
     requested_id = model_id or DEFAULT_MODEL
-    is_openrouter = requested_id.startswith("openrouter/")
-    cleaned_model = requested_id.replace("openrouter/", "") if is_openrouter else requested_id
+    fallback_models = OPENROUTER_FALLBACK_MODELS if _is_openrouter_model(requested_id) else GOOGLE_FALLBACK_MODELS
 
-    priority_list = [cleaned_model]
-    for fallback in FALLBACK_MODELS:
+    priority_list = [requested_id]
+    for fallback in fallback_models:
         if fallback not in priority_list:
             priority_list.append(fallback)
 
     last_error = None
-    for model_name in priority_list:
+    for candidate in priority_list:
         try:
-            logger.info("Initializing LLM candidate: %s", model_name)
-            if is_openrouter:
-                provider = "openai"
-                base_url = "https://openrouter.ai/api/v1"
-                api_key = os.getenv("OPENROUTER_API_KEY")
-            else:
-                provider = "google_genai"
-                base_url = None
-                api_key = os.getenv("GOOGLE_API_KEY")
+            config = _resolve_model_config(candidate)
+            logger.info("Initializing LLM candidate: %s", config["model_name"])
 
             llm = init_chat_model(
-                model_name,
-                model_provider=provider,
-                base_url=base_url,
-                api_key=api_key,
+                config["model_name"],
+                model_provider=config["provider"],
+                base_url=config["base_url"],
+                api_key=config["api_key"],
                 temperature=0.1,
                 streaming=False,
                 default_headers={
@@ -116,10 +149,10 @@ def get_llm(model_id: str):
                     "X-Title": "Enterprise RAG Pro",
                 },
             )
-            return llm, model_name
+            return llm, config["model_name"]
         except Exception as exc:
             last_error = exc
-            logger.error("Model initialization failed for %s: %s", model_name, exc)
+            logger.error("Model initialization failed for %s: %s", candidate, exc)
 
     raise RuntimeError(f"All model initializations failed: {last_error}")
 

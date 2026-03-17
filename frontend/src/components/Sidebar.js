@@ -1,6 +1,5 @@
 import React from 'react';
 import { Database, FileText, Plus, RefreshCw, ShieldCheck, X } from 'lucide-react';
-import UploadButton from './UploadButton';
 
 function formatFileSize(sizeBytes) {
   if (!sizeBytes) {
@@ -16,7 +15,13 @@ function formatFileSize(sizeBytes) {
   return `${value.toFixed(value >= 10 || index === 0 ? 0 : 1)} ${units[index]}`;
 }
 
-export default function Sidebar({ documents, kbStatus, onDeleteDocument, onNewChat, onRefresh, onUploadSuccess }) {
+export default function Sidebar({
+  documents,
+  kbStatus,
+  onDeleteDocument,
+  onNewChat,
+  onRefresh,
+}) {
   const statusTone =
     kbStatus.status === 'ready'
       ? 'emerald'
@@ -27,8 +32,8 @@ export default function Sidebar({ documents, kbStatus, onDeleteDocument, onNewCh
           : 'slate';
 
   return (
-    <aside className="w-full max-w-[340px] border-r border-white/10 bg-[rgba(7,12,20,0.78)] backdrop-blur-xl lg:min-h-screen">
-      <div className="flex h-full flex-col">
+    <aside className="w-full max-w-[340px] border-r border-white/10 bg-[rgba(7,12,20,0.78)] backdrop-blur-xl lg:h-screen lg:min-h-0 lg:overflow-hidden">
+      <div className="flex h-full min-h-0 flex-col">
         <div className="border-b border-white/10 p-6">
           <div className="mb-6 flex items-start justify-between gap-4">
             <div>
@@ -79,11 +84,6 @@ export default function Sidebar({ documents, kbStatus, onDeleteDocument, onNewCh
               </div>
             </div>
           </div>
-        </div>
-
-        <div className="border-b border-white/10 p-6">
-          <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">Ingestion</p>
-          <UploadButton onUploadSuccess={onUploadSuccess} />
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">

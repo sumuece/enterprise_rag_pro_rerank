@@ -5,8 +5,15 @@ from pathlib import Path
 
 from langchain_community.document_loaders import DirectoryLoader, PyPDFLoader
 from langchain_community.vectorstores import Chroma
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+from model_registry import (
+    build_embeddings,
+    build_new_store_dir_name,
+    get_current_embedding_model_id,
+    get_current_store_path,
+    save_embedding_config,
+)
 
 
 logging.basicConfig(
@@ -18,15 +25,9 @@ logger = logging.getLogger("Ingestor")
 BASE_DIR = Path(__file__).resolve().parent
 DATA_PATH = BASE_DIR / "data"
 DB_ROOT = BASE_DIR / "chroma_db"
-DB_PATH = DB_ROOT / "store"
 COLLECTION_NAME = "enterprise_rag_documents"
 CHUNK_SIZE = 1100
 CHUNK_OVERLAP = 180
-
-
-def _get_embeddings():
-    return GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
-
 
 def _build_suggested_prompt(document_name: str, sample_text: str) -> str:
     safe_name = document_name or "this document"
@@ -86,14 +87,16 @@ def _clear_directory(directory: Path) -> None:
 def reset_knowledge_base():
     DATA_PATH.mkdir(parents=True, exist_ok=True)
     DB_ROOT.mkdir(parents=True, exist_ok=True)
-    if DB_PATH.exists():
-        _clear_directory(DB_PATH)
+    db_path = get_current_store_path()
+    if db_path.exists():
+        _clear_directory(db_path)
     logger.info("Knowledge base reset. No indexed documents remain.")
     return {
         "documents": [],
         "document_count": 0,
         "chunk_count": 0,
         "status": "empty",
+        "embedding_model_id": get_current_embedding_model_id(),
     }
 
 
@@ -171,28 +174,35 @@ def _prepare_chunks():
     return chunks, sorted(file_summaries.values(), key=lambda item: item["name"].lower())
 
 
-def run_ingestion():
+def run_ingestion(embedding_model_id: str | None = None):
     logger.info("--- Starting enterprise ingestion ---")
     chunks, documents = _prepare_chunks()
     if not chunks:
         return reset_knowledge_base()
 
-    if DB_PATH.exists():
-        logger.info("Resetting existing Chroma contents for clean re-indexing.")
-        _clear_directory(DB_PATH)
+    embeddings, resolved_embedding_model_id = build_embeddings(embedding_model_id)
+    logger.info("Using embedding model for ingestion: %s", resolved_embedding_model_id)
+
+    new_store_dir = build_new_store_dir_name()
+    db_path = DB_ROOT / new_store_dir
+    DB_ROOT.mkdir(parents=True, exist_ok=True)
+    if db_path.exists():
+        _clear_directory(db_path)
     else:
-        DB_PATH.mkdir(parents=True, exist_ok=True)
+        db_path.mkdir(parents=True, exist_ok=True)
+    logger.info("Building Chroma store in fresh directory: %s", db_path)
 
     vectorstore = Chroma.from_documents(
         documents=chunks,
-        embedding=_get_embeddings(),
-        persist_directory=str(DB_PATH),
+        embedding=embeddings,
+        persist_directory=str(db_path),
         collection_name=COLLECTION_NAME,
     )
     if hasattr(vectorstore, "persist"):
         vectorstore.persist()
-        logger.info("Vector store persisted to %s", DB_PATH)
+        logger.info("Vector store persisted to %s", db_path)
 
+    save_embedding_config(resolved_embedding_model_id, new_store_dir)
     logger.info(
         "Ingestion complete. Indexed %s documents and %s chunks.",
         len(documents),
@@ -203,6 +213,7 @@ def run_ingestion():
         "document_count": len(documents),
         "chunk_count": len(chunks),
         "status": "ready",
+        "embedding_model_id": resolved_embedding_model_id,
     }
 
 

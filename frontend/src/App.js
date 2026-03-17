@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import ChatWindow from './components/ChatWindow';
 import Sidebar from './components/Sidebar';
-import { FREE_MODELS } from './models';
+import { EMBEDDING_MODELS, FREE_MODELS } from './models';
 
 const API_BASE = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
 
@@ -10,6 +10,7 @@ function App() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [selectedModel, setSelectedModel] = useState(FREE_MODELS[0].id);
+  const [selectedEmbeddingModel, setSelectedEmbeddingModel] = useState(EMBEDDING_MODELS[0].id);
   const [actualModel, setActualModel] = useState(null);
   const [composerFocusKey, setComposerFocusKey] = useState(0);
   const [kbStatus, setKbStatus] = useState({
@@ -17,6 +18,7 @@ function App() {
     chunk_count: 0,
     document_count: 0,
     documents: [],
+    embedding_model_id: EMBEDDING_MODELS[0].id,
   });
   const hasKnowledgeBase = kbStatus.status === 'ready' && (kbStatus.document_count || 0) > 0;
 
@@ -133,6 +135,9 @@ function App() {
         sources: [],
       },
     ]);
+    if (payload.embedding_model_id) {
+      setSelectedEmbeddingModel(payload.embedding_model_id);
+    }
     setInput(payload.suggested_prompt || `Give me an executive summary of ${primaryDocument}.`);
     setComposerFocusKey((value) => value + 1);
     refreshKnowledgeBase();
@@ -186,7 +191,6 @@ function App() {
         onDeleteDocument={handleDeleteDocument}
         onNewChat={handleNewChat}
         onRefresh={refreshKnowledgeBase}
-        onUploadSuccess={handleUploadSuccess}
       />
       <ChatWindow
         actualModel={actualModel}
@@ -198,8 +202,11 @@ function App() {
         messages={messages}
         onRetry={handleRetry}
         onSend={handleSend}
+        onUploadSuccess={handleUploadSuccess}
         selectedModel={selectedModel}
+        selectedEmbeddingModel={selectedEmbeddingModel}
         setInput={setInput}
+        setSelectedEmbeddingModel={setSelectedEmbeddingModel}
         setSelectedModel={setSelectedModel}
       />
     </div>

@@ -3,12 +3,13 @@ import shutil
 from pathlib import Path
 from urllib.parse import unquote
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from engine import answer_query, get_collection_stats
 from ingest import DATA_PATH, reset_knowledge_base, run_ingestion
+from model_registry import DEFAULT_EMBEDDING_MODEL, get_current_embedding_model_id
 
 
 logging.basicConfig(level=logging.INFO)
@@ -27,7 +28,7 @@ app.add_middleware(
 
 class ChatRequest(BaseModel):
     prompt: str = Field(..., min_length=2, max_length=8000)
-    model_id: str = "openrouter/google/gemini-2.0-flash-001"
+    model_id: str = "openrouter/free"
 
 
 def _list_documents():
@@ -46,43 +47,90 @@ def _list_documents():
     return documents
 
 
+def _sync_knowledge_base_state():
+    documents = _list_documents()
+    stats = get_collection_stats()
+    has_documents = bool(documents)
+    has_chunks = stats["chunk_count"] > 0
+    embedding_model_id = stats.get("embedding_model_id") or get_current_embedding_model_id()
+
+    if has_documents and not has_chunks:
+        logger.warning(
+            "Knowledge base mismatch detected: %s document(s) on disk but no indexed chunks. Rebuilding index.",
+            len(documents),
+        )
+        ingestion_result = run_ingestion()
+        return {
+            "status": ingestion_result["status"],
+            "chunk_count": ingestion_result["chunk_count"],
+            "document_count": ingestion_result["document_count"],
+            "documents": ingestion_result["documents"],
+            "embedding_model_id": ingestion_result["embedding_model_id"],
+        }
+
+    if not has_documents and has_chunks:
+        logger.warning("Knowledge base mismatch detected: indexed chunks exist without source PDFs. Resetting index.")
+        reset_knowledge_base()
+        return {
+            "status": "empty",
+            "chunk_count": 0,
+            "document_count": 0,
+            "documents": [],
+            "embedding_model_id": get_current_embedding_model_id(),
+        }
+
+    return {
+        "status": stats["status"],
+        "chunk_count": stats["chunk_count"],
+        "document_count": len(documents),
+        "documents": documents,
+        "embedding_model_id": embedding_model_id,
+    }
+
+
 @app.get("/health")
 async def health_check():
-    stats = get_collection_stats()
-    logger.info("Health check requested. kb_status=%s chunk_count=%s", stats["status"], stats["chunk_count"])
+    kb_state = _sync_knowledge_base_state()
+    logger.info("Health check requested. kb_status=%s chunk_count=%s", kb_state["status"], kb_state["chunk_count"])
     return {
         "status": "ok",
-        "knowledge_base": stats["status"],
-        "chunk_count": stats["chunk_count"],
-        "document_count": len(_list_documents()),
+        "knowledge_base": kb_state["status"],
+        "chunk_count": kb_state["chunk_count"],
+        "document_count": kb_state["document_count"],
+        "embedding_model_id": kb_state["embedding_model_id"],
     }
 
 
 @app.get("/documents")
 async def list_documents():
     logger.info("Document list endpoint requested.")
-    return {"documents": _list_documents()}
+    kb_state = _sync_knowledge_base_state()
+    return {"documents": kb_state["documents"]}
 
 
 @app.get("/kb/status")
 async def knowledge_base_status():
-    stats = get_collection_stats()
+    kb_state = _sync_knowledge_base_state()
     logger.info(
         "Knowledge base status requested. status=%s chunk_count=%s",
-        stats["status"],
-        stats["chunk_count"],
+        kb_state["status"],
+        kb_state["chunk_count"],
     )
     return {
-        "status": stats["status"],
-        "chunk_count": stats["chunk_count"],
-        "document_count": len(_list_documents()),
-        "documents": _list_documents(),
+        "status": kb_state["status"],
+        "chunk_count": kb_state["chunk_count"],
+        "document_count": kb_state["document_count"],
+        "documents": kb_state["documents"],
+        "embedding_model_id": kb_state["embedding_model_id"],
     }
 
 
 @app.post("/upload")
-async def upload_file(file: UploadFile = File(...)):
-    logger.info("Received upload request: %s", file.filename)
+async def upload_file(
+    file: UploadFile = File(...),
+    embedding_model_id: str = Form(DEFAULT_EMBEDDING_MODEL),
+):
+    logger.info("Received upload request: %s embedding_model=%s", file.filename, embedding_model_id)
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported.")
 
@@ -95,12 +143,13 @@ async def upload_file(file: UploadFile = File(...)):
             shutil.copyfileobj(file.file, buffer)
 
         logger.info("Saved upload to %s", save_path)
-        ingestion_result = run_ingestion()
+        ingestion_result = run_ingestion(embedding_model_id)
         logger.info(
-            "Upload indexed successfully. file=%s documents=%s chunks=%s",
+            "Upload indexed successfully. file=%s documents=%s chunks=%s embedding_model=%s",
             safe_name,
             ingestion_result["document_count"],
             ingestion_result["chunk_count"],
+            ingestion_result["embedding_model_id"],
         )
         return {
             "message": f"Successfully indexed {safe_name}",
@@ -108,6 +157,7 @@ async def upload_file(file: UploadFile = File(...)):
             "document_count": ingestion_result["document_count"],
             "chunk_count": ingestion_result["chunk_count"],
             "documents": ingestion_result["documents"],
+            "embedding_model_id": ingestion_result["embedding_model_id"],
             "suggested_prompt": next(
                 (
                     document.get("suggested_prompt")
@@ -149,6 +199,7 @@ async def delete_document(document_name: str):
             "document_count": ingestion_result["document_count"],
             "chunk_count": ingestion_result["chunk_count"],
             "documents": ingestion_result["documents"],
+            "embedding_model_id": ingestion_result["embedding_model_id"],
         }
     except Exception as exc:
         logger.exception("Delete failed: %s", exc)
@@ -159,6 +210,7 @@ async def delete_document(document_name: str):
 async def chat_endpoint(request: ChatRequest):
     logger.info("Chat request received for model: %s", request.model_id)
     try:
+        _sync_knowledge_base_state()
         result = answer_query(request.prompt, request.model_id)
         logger.info(
             "Chat request completed. model=%s retrieved_chunks=%s latency_ms=%s",

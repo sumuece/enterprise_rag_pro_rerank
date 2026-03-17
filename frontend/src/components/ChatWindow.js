@@ -6,13 +6,15 @@ import {
   ChevronDown,
   Clock3,
   FileStack,
+  Database,
   Loader2,
   MessageSquare,
   MoreHorizontal,
   RotateCcw,
   Send,
 } from 'lucide-react';
-import { FREE_MODELS } from '../models';
+import UploadButton from './UploadButton';
+import { EMBEDDING_MODELS, FREE_MODELS } from '../models';
 
 const MESSAGE_WINDOW_SIZE = 24;
 
@@ -116,8 +118,11 @@ export default function ChatWindow({
   messages,
   onRetry,
   onSend,
+  onUploadSuccess,
   selectedModel,
+  selectedEmbeddingModel,
   setInput,
+  setSelectedEmbeddingModel,
   setSelectedModel,
 }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -128,6 +133,8 @@ export default function ChatWindow({
   const previousMessageCountRef = useRef(messages.length);
   const visibleMessages = messages.slice(-visibleCount);
   const hiddenMessageCount = Math.max(messages.length - visibleMessages.length, 0);
+  const activeEmbedding = EMBEDDING_MODELS.find((model) => model.id === kbStatus.embedding_model_id);
+  const selectedEmbedding = EMBEDDING_MODELS.find((model) => model.id === selectedEmbeddingModel);
 
   useEffect(() => {
     if (messages.length > previousMessageCountRef.current) {
@@ -165,7 +172,7 @@ export default function ChatWindow({
             </p>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <div className="metric-card">
               <div className="metric-label">
                 <BrainCircuit size={15} />
@@ -187,65 +194,92 @@ export default function ChatWindow({
               </div>
               <p className="metric-value">{kbStatus.chunk_count || 0}</p>
             </div>
+            <div className="metric-card">
+              <div className="metric-label">
+                <Database size={15} />
+                Index embedding
+              </div>
+              <p className="metric-value">{activeEmbedding?.name || 'Gemini Embedding'}</p>
+            </div>
           </div>
         </div>
       </header>
 
       <section ref={mainScrollRef} className="chat-main-scroll min-h-0 flex flex-1 flex-col px-5 pb-6 pt-5 lg:px-8">
-        <div className="mb-5 flex flex-col gap-4 rounded-[28px] border border-white/10 bg-white/[0.04] p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Inference routing</p>
-            <p className="mt-1 text-sm text-slate-300">Select the model tier you want the retrieval chain to use.</p>
-          </div>
-
-          <div className="relative">
-            <button
-              onClick={() => setIsMenuOpen((open) => !open)}
-              className="flex min-w-[260px] items-center justify-between gap-3 rounded-2xl border border-white/10 bg-[rgba(10,19,30,0.72)] px-4 py-3 text-left text-sm text-white transition hover:border-cyan-400/30"
-            >
-              <div>
-                <p className="font-medium">{FREE_MODELS.find((model) => model.id === selectedModel)?.name || 'Select model'}</p>
-                <p className="mt-1 text-xs text-slate-400">
-                  {FREE_MODELS.find((model) => model.id === selectedModel)?.description}
-                </p>
-              </div>
-              <ChevronDown size={16} className={`transition ${isMenuOpen ? 'rotate-180' : ''}`} />
-            </button>
-
-            {isMenuOpen && (
-              <>
-                <button
-                  aria-label="Close model menu"
-                  className="fixed inset-0 cursor-default bg-transparent"
-                  onClick={() => setIsMenuOpen(false)}
-                  type="button"
-                />
-                <div className="absolute right-0 z-20 mt-3 w-full rounded-3xl border border-white/10 bg-[rgba(8,13,22,0.97)] p-2 shadow-2xl shadow-cyan-950/30">
-                  {FREE_MODELS.map((model) => (
-                    <button
-                      key={model.id}
-                      className={`w-full rounded-2xl px-4 py-3 text-left transition ${
-                        selectedModel === model.id ? 'bg-cyan-400/10 text-white' : 'text-slate-200 hover:bg-white/5'
-                      }`}
-                      onClick={() => {
-                        setSelectedModel(model.id);
-                        setIsMenuOpen(false);
-                      }}
-                    >
-                      <p className="text-sm font-medium">{model.name}</p>
-                      <p className="mt-1 text-xs leading-5 text-slate-400">{model.description}</p>
-                    </button>
-                  ))}
+        <div className="mb-5 rounded-[28px] border border-white/10 bg-white/[0.04] p-4">
+          <div className="space-y-4">
+            <div className="rounded-[24px] border border-white/10 bg-black/10 p-4">
+              <div className="flex flex-col gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Inference routing</p>
+                  <p className="mt-1 text-sm text-slate-300">Select the free OpenRouter model you want the retrieval chain to use.</p>
                 </div>
-              </>
-            )}
+
+                <div className="relative">
+                  <button
+                    onClick={() => setIsMenuOpen((open) => !open)}
+                    className="flex w-full items-center justify-between gap-3 rounded-2xl border border-white/10 bg-[rgba(10,19,30,0.72)] px-4 py-3 text-left text-sm text-white transition hover:border-cyan-400/30"
+                  >
+                    <div>
+                      <p className="font-medium">{FREE_MODELS.find((model) => model.id === selectedModel)?.name || 'Select model'}</p>
+                      <p className="mt-1 text-xs text-slate-400">
+                        {FREE_MODELS.find((model) => model.id === selectedModel)?.description}
+                      </p>
+                    </div>
+                    <ChevronDown size={16} className={`transition ${isMenuOpen ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {isMenuOpen && (
+                    <>
+                      <button
+                        aria-label="Close model menu"
+                        className="fixed inset-0 cursor-default bg-transparent"
+                        onClick={() => setIsMenuOpen(false)}
+                        type="button"
+                      />
+                      <div className="absolute right-0 z-20 mt-3 w-full rounded-3xl border border-white/10 bg-[rgba(8,13,22,0.97)] p-2 shadow-2xl shadow-cyan-950/30">
+                        {FREE_MODELS.map((model) => (
+                          <button
+                            key={model.id}
+                            className={`w-full rounded-2xl px-4 py-3 text-left transition ${
+                              selectedModel === model.id ? 'bg-cyan-400/10 text-white' : 'text-slate-200 hover:bg-white/5'
+                            }`}
+                            onClick={() => {
+                              setSelectedModel(model.id);
+                              setIsMenuOpen(false);
+                            }}
+                          >
+                            <p className="text-sm font-medium">{model.name}</p>
+                            <p className="mt-1 text-xs leading-5 text-slate-400">{model.description}</p>
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[24px] border border-white/10 bg-black/10 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Ingestion</p>
+              <p className="mt-1 text-sm text-slate-300">Choose the embedding model for the next reindex and upload documents here.</p>
+              <div className="mt-4">
+                <UploadButton
+                  activeEmbeddingModelId={kbStatus.embedding_model_id}
+                  embeddingModelId={selectedEmbeddingModel}
+                  onUploadSuccess={onUploadSuccess}
+                  selectedEmbedding={selectedEmbedding}
+                  setEmbeddingModelId={setSelectedEmbeddingModel}
+                />
+              </div>
+            </div>
           </div>
         </div>
 
         <div className={`chat-surface ${messages.length === 0 && !isLoading ? 'chat-surface-empty' : ''}`}>
           {!hasKnowledgeBase && (
             <div className="mb-5 rounded-[24px] border border-amber-300/20 bg-amber-300/10 px-5 py-4 text-sm leading-7 text-amber-50">
-              No documents are indexed yet. Upload a PDF from the left panel to enable search and citations.
+              No documents are indexed yet. Upload a PDF from the ingestion card above to enable search and citations.
             </div>
           )}
 
